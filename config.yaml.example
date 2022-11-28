@@ -1,0 +1,9 @@
+# this file would go in ~/.config/huedo.yaml
+hub:
+  ip: hue-hub-ip-address
+  user: hue-hub-user-id
+lightgroups:
+  group-name:
+    lights:
+    - id (int)
+    - id (int)
