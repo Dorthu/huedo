@@ -1,8 +1,11 @@
 import argparse
 import json
 import requests
+from typing import List
 from os.path import expanduser
 import yaml
+
+from terminaltables import SingleTable
 
 
 # silence insecure request warnings; these are generated because the hue bridge
@@ -11,6 +14,19 @@ requests.packages.urllib3.disable_warnings()
 
 
 CONFIG_PATH = "~/.config/huedo.yaml"
+
+
+def print_table(data: List[List[str]], header=True) -> None:
+    """
+    Prints a no-borders table with an optional header row
+    """
+    tab = SingleTable(data)
+    tab.inner_heading_row_border = header
+    tab.inner_column_border = False
+    tab.inner_row_border = False
+    tab.outer_border = False
+
+    print(tab.table)
 
 
 class HueDoError(RuntimeError):
@@ -47,7 +63,7 @@ class HueDoClient:
     def __init__(self):
         self.config = HueDoConfig()
 
-    def toggle_lightgroup(self, group_name):
+    def toggle_lightgroup(self, group_name: str) -> None:
         """
         Toggles all lights in the group.  Group names are set up in the config
         """
@@ -55,17 +71,63 @@ class HueDoClient:
         for light in group["lights"]:
             self.toggle_light(light)
 
-    def toggle_light(self, light):
+    def toggle_light(self, light: int) -> None:
+        """
+        Toggles the state of a single light
+        """
         new_state = not self.light_is_on(light)
         self.call("PUT", f"lights/{light}/state", body={"on":new_state})
 
-    def light_is_on(self, light):
+    def light_is_on(self, light: int) -> bool:
+        """
+        Returns True if the light is on, otherwise returns False
+        """
         resp = self.call("GET", f"lights/{light}")
         return resp["state"]["on"]
 
-    def get_lights(self):
+    def get_lights(self) -> dict:
+        """
+        Returns all lights as a dict of id: light_dict
+        """
         return self.call("GET", "lights")
-    
+
+    def get_light_info(self, light: int) -> dict:
+        """
+        Returns information about a single light
+        """
+        return self.call("GET", f"lights/{light}")
+
+    def set_light_state(
+            self,
+            light_id: int,
+            on: bool = None,
+            hue: int = None,
+            brightness: int = None,
+            saturation: int = None
+    ) -> None:
+        """
+        Sets the configuration of a light
+        """
+        state = {}
+
+        if on is not None:
+            state["on"] = on
+
+        if hue is not None:
+            state["hue"] = hue
+
+        if brightness is not None:
+            state["bri"] = brightness
+
+        if saturation is not None:
+            state["sat"] = saturation
+
+        if not state:
+            return
+
+        print(f"Settings {light_id} to state {state}")
+        self.call("PUT", f"lights/{light_id}/state", body=state)
+
     def call(self, method, fragment, body={}):
         func = getattr(requests, method.lower())
         url = self.config.build_url(fragment)
@@ -84,7 +146,7 @@ class HueDoClient:
         return r.json()
 
 
-def toggle_lightgroup(unparsed):
+def toggle_lightgroup(unparsed: List[str]):
     parser = argparse.ArgumentParser()
     parser.add_argument("light_group")
     args = parser.parse_args(unparsed)
@@ -100,7 +162,7 @@ def toggle_lightgroup(unparsed):
         client.toggle_lightgroup(args.light_group)
 
 
-def list_things(unparsed):
+def list_things(unparsed: List[str]):
     parser = argparse.ArgumentParser()
     parser.add_argument("thing")
     args = parser.parse_args(unparsed)
@@ -110,14 +172,66 @@ def list_things(unparsed):
     if args.thing == "lights":
         lights = client.get_lights()
 
-        for lid, light in lights.items():
-            print(f"{lid}\t{light['name']}")
+        data = [["ID", "Name"]] + [[lid, light['name']] for lid, light in lights.items()]
+        print_table(data)
     else:
         print(f"Unrecognized thing: {thing}")
+
+
+def show_light_details(unparsed: List[str]):
+    """
+    Shows the details of a single light
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument("light_id")
+    args = parser.parse_args(unparsed)
+
+    client = HueDoClient()
+    light = client.get_light_info(args.light_id)
+
+    data = [
+        [ "Name:", light['name'] ],
+        [ "Software Version:", light['swversion'] ],
+        [ "State:", "On" if light['state']['on'] else "Off" ],
+        [ "Hue:", light['state']['hue'] ],
+        [ "Brightness:", light['state']['bri'] ],
+        [ "Saturation:", light['state']['sat'] ],
+    ]
+
+    print_table(data, header=False)
+
+
+def set_light_state(unparsed: List[str]) -> None:
+    """
+    Sets the current state of a single light
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument("light_id")
+    parser.add_argument("--state")
+    parser.add_argument("--hue", type=int)
+    parser.add_argument("--brightness", type=int)
+    parser.add_argument("--saturation", type=int)
+    args = parser.parse_args(unparsed)
+
+    on = None
+    if args.state is not None:
+        on = args.state == "on"
+
+    client = HueDoClient()
+    client.set_light_state(
+        args.light_id,
+        on = on,
+        hue = args.hue,
+        brightness = args.brightness,
+        saturation = args.saturation,
+    )
+
 
 DISPATCH_TABLE = {
     "toggle": toggle_lightgroup,
     "list": list_things,
+    "show": show_light_details,
+    "set": set_light_state,
 }
 
 
