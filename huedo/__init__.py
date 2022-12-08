@@ -1,8 +1,9 @@
 import argparse
 import json
+import platform
 import requests
 from typing import List
-from os.path import expanduser
+from os.path import expanduser, isfile
 import yaml
 
 from terminaltables import SingleTable
@@ -48,8 +49,23 @@ class HueDoConfig:
 
         raise HueDoError(f"Unconfigured light group {group_name}")
 
+    def update_user(self, hub_addr: str, user: str) -> None:
+        """
+        Saves the config with a new username
+        """
+        print(f"config is {self.config}")
+        self.config['hub']['ip'] = hub_addr
+        self.config['hub']['user'] = user
+        self._save()
+
     def _load(self):
         if self.loaded:
+            return
+
+        if not isfile(expanduser(CONFIG_PATH)):
+            # if unconfigured, that's fine
+            self.config = {"hub": {"ip": "", "user": ""}}
+            self.loaded = True
             return
 
         with open(expanduser(CONFIG_PATH)) as f:
@@ -58,10 +74,40 @@ class HueDoConfig:
         self.config = yaml.safe_load(raw)
         self.loaded = True
 
+    def _save(self) -> None:
+        """
+        Writes out the config as it exists in memory right now
+        """
+        if not self.loaded:
+            raise HueDoError("Attempted to save config before it was loaded!")
+
+        print(f"Writing new config {self.config}")
+
+        with open(expanduser(CONFIG_PATH), "w") as f:
+            f.write(yaml.dump(self.config))
+
 
 class HueDoClient:
     def __init__(self):
         self.config = HueDoConfig()
+
+    def create_user(self, hub_addr: str) -> None:
+        """
+        Sets up a new user with the hue hub.  The hue link button must have been
+        pressed before this call will work.
+        """
+        res = self.call("POST", "", body={"devicetype":f"huedo#{platform.system()}"}, url=f"https://{hub_addr}/api")
+
+        if isinstance(res, list) and "success" in res[0]:
+            # got a new username - sweet!
+            username = res[0]['success']['username']
+
+            self.config.update_user(hub_addr, username)
+        elif isinstance(res, list) and "error" in res[0]:
+            raise HueDoError(res[0]["error"]["description"])
+        else:
+            raise HueDoError(f"Unexpected response: {res}")
+
 
     def toggle_lightgroup(self, group_name: str) -> None:
         """
@@ -128,9 +174,11 @@ class HueDoClient:
         print(f"Settings {light_id} to state {state}")
         self.call("PUT", f"lights/{light_id}/state", body=state)
 
-    def call(self, method, fragment, body={}):
+    def call(self, method: str, fragment: str, body: dict = {}, url: str = None) -> dict:
         func = getattr(requests, method.lower())
-        url = self.config.build_url(fragment)
+
+        if url is None:
+            url = self.config.build_url(fragment)
 
         body_json = None
         if body:
@@ -146,7 +194,19 @@ class HueDoClient:
         return r.json()
 
 
-def toggle_lightgroup(unparsed: List[str]):
+def init_user(unparsed: List[str]) -> None:
+    """
+    Sets up huedo with a new user from the hub
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument("hub_ip")
+    args = parser.parse_args(unparsed)
+
+    client = HueDoClient()
+    client.create_user(args.hub_ip)
+
+
+def toggle_lightgroup(unparsed: List[str]) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("light_group")
     args = parser.parse_args(unparsed)
@@ -162,7 +222,7 @@ def toggle_lightgroup(unparsed: List[str]):
         client.toggle_lightgroup(args.light_group)
 
 
-def list_things(unparsed: List[str]):
+def list_things(unparsed: List[str]) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("thing")
     args = parser.parse_args(unparsed)
@@ -178,7 +238,7 @@ def list_things(unparsed: List[str]):
         print(f"Unrecognized thing: {thing}")
 
 
-def show_light_details(unparsed: List[str]):
+def show_light_details(unparsed: List[str]) -> None:
     """
     Shows the details of a single light
     """
@@ -228,6 +288,7 @@ def set_light_state(unparsed: List[str]) -> None:
 
 
 DISPATCH_TABLE = {
+    "init": init_user,
     "toggle": toggle_lightgroup,
     "list": list_things,
     "show": show_light_details,
