@@ -53,7 +53,6 @@ class HueDoConfig:
         """
         Saves the config with a new username
         """
-        print(f"config is {self.config}")
         self.config['hub']['ip'] = hub_addr
         self.config['hub']['user'] = user
         self._save()
@@ -287,12 +286,36 @@ def set_light_state(unparsed: List[str]) -> None:
     )
 
 
+def raw(unparsed: List[str]) -> None:
+    """
+    Handles sending requests directly to the bridge.
+    Accepts the fragment, JSON body, and method (default
+    GET) and prints out the JSON response.
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument("fragment")
+    parser.add_argument("method", nargs="?", default="GET")
+    parser.add_argument("body", nargs="?", default="{}")
+    args = parser.parse_args(unparsed)
+
+    try:
+        body = json.loads(args.body)
+    except JSONDecodeError:
+        print("Body specified must be valid JSON!")
+        exit(1)
+
+    client = HueDoClient()
+    res = client.call(args.method, args.fragment, body)
+
+    print(json.dumps(res))
+
 DISPATCH_TABLE = {
     "init": init_user,
     "toggle": toggle_lightgroup,
     "list": list_things,
     "show": show_light_details,
     "set": set_light_state,
+    "raw": raw,
 }
 
 
