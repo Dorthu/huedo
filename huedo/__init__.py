@@ -253,9 +253,9 @@ def show_light_details(unparsed: List[str]) -> None:
         [ "Name:", light['name'] ],
         [ "Software Version:", light['swversion'] ],
         [ "State:", "On" if light['state']['on'] else "Off" ],
-        [ "Hue:", light['state']['hue'] ],
+        [ "Hue:", light['state'].get('hue', 'N/A') ],
         [ "Brightness:", light['state']['bri'] ],
-        [ "Saturation:", light['state']['sat'] ],
+        [ "Saturation:", light['state'].get('sat', 'N/A') ],
     ]
 
     print_table(data, header=False)
