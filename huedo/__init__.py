@@ -241,10 +241,6 @@ def list_things(unparsed: List[str]) -> None:
         data = [["ID", "Name"]] + [[lid, light['name']] for lid, light in lights.items()]
         print_table(data)
 
-    # shouldn't ever get here
-    print(f"Unrecognized thing: {thing}")
-    sys.exit(1)
-
 
 def show_light_details(unparsed: List[str]) -> None:
     """
