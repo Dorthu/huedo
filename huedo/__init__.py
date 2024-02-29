@@ -199,7 +199,7 @@ def init_user(unparsed: List[str]) -> None:
     Sets up huedo with a new user from the hub
     """
     parser = argparse.ArgumentParser("huedo init", description="Initialize a new huedo installation")
-    parser.add_argument("hub_ip", help="The IP Address the Hue Hub is reachable at (you can find it in the Phillips Hue app).")
+    parser.add_argument("hub_ip", metavar="HUB_IP", help="The IP Address the Hue Hub is reachable at (you can find it in the Phillips Hue app).")
     args = parser.parse_args(unparsed)
 
     client = HueDoClient()
@@ -208,7 +208,7 @@ def init_user(unparsed: List[str]) -> None:
 
 def toggle_lightgroup(unparsed: List[str]) -> None:
     parser = argparse.ArgumentParser("huedo toggle", description="Toggle light status")
-    parser.add_argument("light_group", help="The Light ID or Light Group name")
+    parser.add_argument("light_group", metavar="IDENTIFIER", help="The Light ID or Light Group name")
     args = parser.parse_args(unparsed)
 
 
@@ -223,10 +223,10 @@ def toggle_lightgroup(unparsed: List[str]) -> None:
 
 
 def list_things(unparsed: List[str]) -> None:
-    thing_types = ("lights")
+    thing_types = ("lights",)
 
     parser = argparse.ArgumentParser("huedo list", description="List objects within the Hue ecosystem")
-    parser.add_argument("thing", help=f"The entity type to list; one of {', '.join(thing_types)}")
+    parser.add_argument("thing", metavar="TYPE", help=f"The entity type to list; one of {', '.join(thing_types)}")
     args = parser.parse_args(unparsed)
 
     client = HueDoClient()
@@ -247,7 +247,7 @@ def show_light_details(unparsed: List[str]) -> None:
     Shows the details of a single light
     """
     parser = argparse.ArgumentParser("huedo show", description="Show details on a light")
-    parser.add_argument("light_id", help="The Light ID of the light to show")
+    parser.add_argument("light_id", metavar="IDENTIFIER", help="The Light ID of the light to show")
     args = parser.parse_args(unparsed)
 
     client = HueDoClient()
@@ -270,11 +270,11 @@ def set_light_state(unparsed: List[str]) -> None:
     Sets the current state of a single light
     """
     parser = argparse.ArgumentParser("huedo set", description="Configure light settings")
-    parser.add_argument("light_id", help="The Light ID to operate on")
-    parser.add_argument("--state", help="The state to set; 'on' or 'off'")
-    parser.add_argument("--hue", type=int, help="The new hue value")
-    parser.add_argument("--brightness", type=int, help="The new brightness value")
-    parser.add_argument("--saturation", type=int, help="The new saturation value")
+    parser.add_argument("light_id", metavar="IDENTIFIER", help="The Light ID to operate on")
+    parser.add_argument("--state", metavar="STATE", help="The state to set; 'on' or 'off'")
+    parser.add_argument("--hue", metavar="HUE", type=int, help="The new hue value")
+    parser.add_argument("--brightness", metavar="BRIGHTNESS", type=int, help="The new brightness value")
+    parser.add_argument("--saturation", metavar="SATURATION", type=int, help="The new saturation value")
     args = parser.parse_args(unparsed)
 
     on = None
@@ -298,16 +298,19 @@ def raw(unparsed: List[str]) -> None:
     GET) and prints out the JSON response.
     """
     parser = argparse.ArgumentParser("huedo raw", description="Send raw requests to the Hue Hub")
-    parser.add_argument("fragment", help="The path fragment to send a request to, not including base URL")
-    parser.add_argument("method", nargs="?", default="GET", help="The request method; defaults to GET")
-    parser.add_argument("body", nargs="?", default="{}", help="The request body to send as JSON; defaults to an empty JSON object")
+    parser.add_argument("fragment", metavar="FRAGMENT", help="The path fragment to send a request to, not including base URL")
+    parser.add_argument("method", metavar="METHOD", nargs="?", default="GET", help="The request method; defaults to GET")
+    parser.add_argument("body", nargs="?", metavar="BODY", default=None, help="The request body to send as JSON; defaults to an empty JSON object")
     args = parser.parse_args(unparsed)
 
-    try:
-        body = json.loads(args.body)
-    except JSONDecodeError:
-        print("Body specified must be valid JSON!")
-        exit(1)
+    body = None
+
+    if args.body:
+        try:
+            body = json.loads(args.body)
+        except JSONDecodeError:
+            print("Body specified must be valid JSON!")
+            exit(1)
 
     client = HueDoClient()
     res = client.call(args.method, args.fragment, body)
@@ -326,7 +329,7 @@ DISPATCH_TABLE = {
 
 def main():
     parser = argparse.ArgumentParser("huedo", description="Interact with a Phillips Hue Hub", add_help=False)
-    parser.add_argument("command", help=f"The command to run; one of {', '.join(DISPATCH_TABLE.keys())}", nargs="?")
+    parser.add_argument("command", metavar="COMMAND", help=f"The command to run - see the --help for each command for more information", choices=list(DISPATCH_TABLE.keys()), nargs="?")
     parser.add_argument("--help", action="store_true", help="Show help and exit")
     parsed, unparsed = parser.parse_known_args()
 
@@ -336,11 +339,7 @@ def main():
     elif parsed.help:
         unparsed.append("--help")
 
-    if parsed.command in DISPATCH_TABLE:
-        try:
-            DISPATCH_TABLE[parsed.command](unparsed)
-        except HueDoError as e:
-            print(f"Error: {e}")
-    else:
-        print(f"Unknown command: {parsed.command}")
-
+    try:
+        DISPATCH_TABLE[parsed.command](unparsed)
+    except HueDoError as e:
+        print(f"Error: {e}")
